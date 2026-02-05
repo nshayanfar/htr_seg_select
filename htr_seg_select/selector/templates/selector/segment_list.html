@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Selector</title>
+	</head>
+	<body>
+		<div>
+			{% if folder_names %}
+			<ul>
+				{% for doc in folder_names %}
+				<li>{% url "segment-list" folder_name=doc %}</li>
+				{% endfor %}
+			</ul>
+			{% endif %}
+		</div>
+	</body>
+</html>
