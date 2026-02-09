@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    container_name: htr_django_dev
+    working_dir: /app
+    volumes:
+      - ./htr_seg_select:/app/htr_seg_select:rw
+      - ./htr_seg_select/media:/app/htr_seg_select/media:rw
+    ports:
+      - "8000:8000"
+    environment:
+      # Set Django DB connection for Postgres (pg_htr must be a container in the same network)
+      DJANGO_DB_HOST: pg_htr
+      DJANGO_DB_PORT: 5433
+      DJANGO_DB_NAME: htr
+      DJANGO_DB_USER: admin
+      DJANGO_DB_PASSWORD: admin123
+    depends_on:
+      - pg_htr
+    networks:
+      - htr_net
+
+  # Reference the Postgres DB container (not built here, only as external)
+  pg_htr:
+    external: true
+
+networks:
+  htr_net:
+    external: true

@@ -56,6 +56,7 @@ from skimage.transform import AffineTransform, PiecewiseAffineTransform, warp
 
 from kraken.lib import default_specs
 from kraken.lib.exceptions import KrakenInputException
+import cv2
 
 if TYPE_CHECKING:
     from kraken.containers import Segmentation, BBoxLine, BaselineLine
@@ -1450,7 +1451,7 @@ def extract_polygons(
         else:
             order = 1
 
-        bounds = expand_boundary(bounds, im, padding=pad)
+        bounds = dilate_boundary(bounds, im, padding=pad)
 
         for line in bounds.lines:
             if line.boundary is None:
@@ -1723,16 +1724,16 @@ def extract_polygons(
                         data=deform_mesh,
                         resample=resample,
                     )
-            bbox = i.getbbox()
-            if bbox is None:
-                out = i
-            else:
-                cropped = i.crop(bbox)
-                w, h = cropped.size
+            # bbox = i.getbbox()
+            # if bbox is None:
+            #     out = i
+            # else:
+            #     cropped = i.crop(bbox)
+            #     w, h = cropped.size
 
-                # create padded canvas
-                out = Image.new(cropped.mode, (w + 2 * pad, h + 2 * pad), 255)
-                out.paste(cropped, (pad, pad))
+            #     # create padded canvas
+            #     out = Image.new(cropped.mode, (w + 2 * pad, h + 2 * pad), 255)
+            #     out.paste(cropped, (pad, pad))
 
             # yield out, line
             yield i.crop(i.getbbox()), line
@@ -1764,6 +1765,9 @@ def expand_boundary(seg: "Segmentation", im: Image.Image, padding=5) -> "Segment
                 raise KrakenInputException("No boundary given for line")
             if len(line.baseline) < 2 or geom.LineString(line.baseline).length < 10:
                 continue
+            corrected_line = possibly_reverse_boundary(line)
+            seg.lines[j].boundary = corrected_line.boundary
+            seg.lines[j].baseline = corrected_line.baseline
             pl = np.array(line.boundary)
             c_min, c_max = int(pl[:, 0].min()), int(pl[:, 0].max())
             r_min, r_max = int(pl[:, 1].min()), int(pl[:, 1].max())
@@ -1797,4 +1801,56 @@ def expand_boundary(seg: "Segmentation", im: Image.Image, padding=5) -> "Segment
                     seg.lines[j].boundary[i][0] -= 30
                     seg.lines[j].boundary[i][0] = max(seg.lines[j].boundary[i][0], 0)
 
+    return seg
+
+
+def possibly_reverse_boundary(line):
+    """
+    Reverses the boundary and baseline of a BaselineLine object.
+
+    Args:
+        line: A Line object.
+    Returns:
+        The reversed Line object.
+    """
+    pl=np.array(line.boundary)
+    c_min, c_max = int(pl[:, 0].min()), int(pl[:, 0].max())
+    c_min_index, c_max_index = (
+        np.where(pl[:, 0] == c_min)[0],
+        np.where(pl[:, 0] == c_max)[0],
+    )
+    mean_before_minc = np.mean(pl[0 : c_min_index[0], 1])
+    mean_after_minc = np.mean(pl[c_min_index[0] : -1, 1])
+    if mean_before_minc < mean_after_minc:
+        line.boundary = list(reversed(line.boundary))
+        line.baseline = list(reversed(line.baseline))
+    return line
+
+
+def dilate_boundary(seg: "Segmentation", im: Image.Image, padding=5) -> "Segmentation":
+    if seg.type == "baselines":
+        for j, line in enumerate(seg.lines):
+            if line.boundary is None:
+                raise KrakenInputException("No boundary given for line")
+            if len(line.baseline) < 2 or geom.LineString(line.baseline).length < 10:
+                continue
+
+            mask = np.zeros((im.height, im.width), dtype=np.uint8)
+
+            cv2.fillPoly(mask, [np.array(line.boundary).astype(np.int32)], 1)
+
+            # circular structuring element
+            radius = padding
+            kernel = cv2.getStructuringElement(
+                cv2.MORPH_ELLIPSE,
+                (2*radius + 1, 2*radius + 1)
+            )
+
+            dilated_mask = cv2.dilate(mask, kernel)
+
+            # optional: extract boundary back to polygon
+            contours, _ = cv2.findContours(
+                dilated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+            seg.lines[j].boundary = np.squeeze(contours[0])
     return seg

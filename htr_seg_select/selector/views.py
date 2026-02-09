@@ -1,16 +1,67 @@
 from django.shortcuts import render, redirect
 from django.http import HttpResponse, HttpRequest
 from django.conf import settings
+from django.urls import reverse
 import os
 import shutil
-
-def segment_pick(request: HttpRequest, folder_name: str):
-    return render(request, "selector/segment_pick.html", {})
-
+import subprocess
 import re
+
+def document_segmenter(request: HttpRequest, doc_id: int):
+    """
+    Executes the external main.py segmenter script with the document file path as argument.
+    Only opens GUI, does not wait for output.
+    Reloads Document list page after execution.
+    """
+    from .models import Document
+
+    try:
+        document = Document.objects.get(pk=doc_id)
+        doc_path = document.file.path
+        # Prepare a clean environment for the subprocess, avoiding Django venv pollution
+        segmenter_venv = "/mnt/5fb87de2-4e02-46a8-96a2-98df87017ed4/Projects/htr_segmenter/.venv"
+        segmenter_python = f"{segmenter_venv}/bin/python"
+        segmenter_env = os.environ.copy()
+        # Remove variables that could interfere with Qt/venv
+        for key in list(segmenter_env):
+            if key.startswith("PYTHON") or key.startswith("QT_") or "cv2" in segmenter_env[key]:
+                del segmenter_env[key]
+        # Set PATH so segmenter venv comes first
+        segmenter_env["PATH"] = f"{segmenter_venv}/bin:" + segmenter_env.get("PATH", "")
+        subprocess.Popen(
+            [segmenter_python,
+             "/mnt/5fb87de2-4e02-46a8-96a2-98df87017ed4/Projects/htr_segmenter/main.py", doc_path],
+            start_new_session=True,
+            env=segmenter_env
+        )
+    except Exception as ex:
+        # Could log error if needed, but per requirements, remain silent
+        pass
+    # Redirect to Django admin document changelist
+    return redirect(reverse('admin:selector_document_changelist'))
 
 def natural_key(s):
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+
+def segment_finalize_admin(request: HttpRequest, doc_id: int):
+    from .models import Document, LineSegment
+    doc = Document.objects.get(pk=doc_id)
+    validated_folder = os.path.join(settings.MEDIA_ROOT, f"{doc.name}_validated")
+    if doc and os.path.isdir(validated_folder):
+        for fname in os.listdir(validated_folder):
+            fpath = os.path.join(validated_folder, fname)
+            if os.path.isfile(fpath):
+                try:
+                    order = int(os.path.splitext(fname)[0])
+                except ValueError:
+                    continue
+                # Create LineSegment referencing the file
+                LineSegment.objects.create(
+                    file=f"{doc.name}_validated/{fname}",
+                    order=order,
+                    document=doc
+                )
+    return redirect("admin:selector_document_changelist")
 
 def segment_finalize(request: HttpRequest, doc_name: str, page_name: str):
     if request.method == "POST":

@@ -1,20 +1,38 @@
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.utils.translation import gettext_lazy as _
 
 
 class Document(models.Model):
     # A single image of a page
-    name = models.CharField(max_length=250, blank=True)
-    file = models.FileField(null=True)
+    name = models.CharField(max_length=250, blank=True, verbose_name=_("نام"))
+    file = models.FileField(null=True, verbose_name=_("فایل"))
+
+    class Meta:
+        verbose_name = _("سند")
+        verbose_name_plural = _("اسناد")
+
+    def __str__(self) -> str:
+        return self.name or f"Document ({self.pk})"
+
 
 class LineSegment(models.Model):
-    file = models.FileField()
-    order = models.IntegerField()
-    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name="linesegments")
-    transcription = models.TextField(blank=True)
-    transcribed = models.BooleanField(default=False)
-    verified = models.BooleanField(default=False)
+    file = models.FileField(verbose_name=_("فایل"))
+    order = models.IntegerField(verbose_name=_("ترتیب"))
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name="linesegments",
+        verbose_name=_("سند"),
+    )
+    transcription = models.TextField(blank=True, verbose_name=_("رونوشت"))
+    transcribed = models.BooleanField(default=False, verbose_name=_("رونوشت شده"))
+    verified = models.BooleanField(default=False, verbose_name=_("تایید شده"))
+
+    class Meta:
+        verbose_name = _("تکه خط")
+        verbose_name_plural = _("تکه‌های خط")
 
     def save(self, *args, **kwargs):
         # Set transcribed to True if transcription is non-empty, else False

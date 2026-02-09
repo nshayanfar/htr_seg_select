@@ -11,6 +11,8 @@ from PIL import Image
 from pathlib import Path
 from .models import Document, LineSegment
 from .segmentation import extract_polygons
+from django.utils.translation import gettext_lazy as _
+import os
 
 
 def segment_document(modeladmin, request, queryset):
@@ -26,7 +28,17 @@ def segment_document(modeladmin, request, queryset):
 
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
-    list_display = ["id", "name", "compare_link", "segments_link"]
+    list_display = [
+        "id",
+        "name",
+        "compare_link",
+        "segments_link",
+        "segmenter_link",
+        "segments_finalize_link",
+        "has_linesegments",
+        "is_transcribed",
+        "is_verified",
+    ]
     actions = [segment_document]
 
     def compare_link(self, obj):
@@ -49,9 +61,20 @@ class DocumentAdmin(admin.ModelAdmin):
 
     segments_link.short_description = "List"
 
+    def segmenter_link(self, obj):
+        url = reverse("document-segmenter", args=[obj.id])
+        return format_html('<a href="{}">Segment</a>', url)
+
+    segmenter_link.short_description = "Segment"
+
+    def segments_finalize_link(self, obj):
+        url = reverse("segment-finalize-admin", args=[obj.id])
+        return format_html('<a href="{}">Finalize</a>', url)
+
+    segments_finalize_link.short_description = "Finalize"
+
     def _cleanup_document_files(self, obj):
         import glob
-        import os
         from django.conf import settings
         import shutil
 
@@ -83,6 +106,28 @@ class DocumentAdmin(admin.ModelAdmin):
             self._cleanup_document_files(obj)
         super().delete_queryset(request, queryset)
 
+    def has_linesegments(self, obj):
+        return obj.linesegments.exists()
+
+    has_linesegments.boolean = True
+    has_linesegments.short_description = _("دارای تکه خط")
+
+    def is_transcribed(self, obj) -> bool:
+        return obj.linesegments.count() and all(
+            segment.transcribed for segment in obj.linesegments.all()
+        )
+
+    is_transcribed.boolean = True
+    is_transcribed.short_description = _("رونوشت شده")
+
+    def is_verified(self, obj) -> bool:
+        return obj.linesegments.count() and all(
+            segment.verified for segment in obj.linesegments.all()
+        )
+
+    is_verified.boolean = True
+    is_verified.short_description = _("تایید شده")
+
 
 @admin.register(LineSegment)
 class LineSegmentAdmin(admin.ModelAdmin):
@@ -91,7 +136,11 @@ class LineSegmentAdmin(admin.ModelAdmin):
     readonly_fields = ["image_tag"]
     ordering = ["document", "transcribed", "order"]
     formfield_overrides = {
-        models.TextField: {'widget': forms.TextInput(attrs={'size': '100'})},
+        models.TextField: {
+            "widget": forms.TextInput(
+                attrs={"size": "50", "dir": "rtl", "style": "font-size:1.3rem;"}
+            )
+        },
     }
     fieldsets = (
         (
@@ -121,20 +170,9 @@ class LineSegmentAdmin(admin.ModelAdmin):
 
 
 def extract_lines_muharaf(im_path, save_prefix: str, doc_name: str, model, padding=10):
-    # load page image
-    im = Image.open(im_path)
-
-    # segment into lines
-    seg = blla.segment(im, text_direction="horizontal-rl", model=[model])
-
-    # each region corresponds to a line bounding box
-    line_images = extract_polygons(im, seg, pad=padding)
-    save_segments(
-        join(settings.MEDIA_ROOT, f"{doc_name}_muharaf"), save_prefix, line_images
-    )
-
-
-def extract_lines_blla(im_path, save_prefix: str, doc_name: str, model, padding=10):
+    base_name = os.path.basename(im_path)
+    _, ext = os.path.splitext(base_name)
+    ext = ext.lstrip(".")
     # load page image
     im = Image.open(im_path)
 
@@ -144,7 +182,27 @@ def extract_lines_blla(im_path, save_prefix: str, doc_name: str, model, padding=
     # each region corresponds to a line bounding box
     line_images = extract_polygons(im, seg, pad=padding)
     save_segments(
-        join(settings.MEDIA_ROOT, f"{doc_name}_blla"), save_prefix, line_images
+        join(settings.MEDIA_ROOT, f"{doc_name}_muharaf"),
+        save_prefix,
+        line_images,
+        ext=ext,
+    )
+
+
+def extract_lines_blla(im_path, save_prefix: str, doc_name: str, model, padding=10):
+    base_name = os.path.basename(im_path)
+    _, ext = os.path.splitext(base_name)
+    ext = ext.lstrip(".")
+    # load page image
+    im = Image.open(im_path)
+
+    # segment into lines
+    seg = blla.segment(im, text_direction="horizontal-rl", model=[model], device="cuda")
+
+    # each region corresponds to a line bounding box
+    line_images = extract_polygons(im, seg, pad=padding)
+    save_segments(
+        join(settings.MEDIA_ROOT, f"{doc_name}_blla"), save_prefix, line_images, ext=ext
     )
 
 
@@ -160,8 +218,8 @@ def extract_lines_bbox(im_path, save_prefix: str, doc_name: str):
     save_segments(f"{doc_name}_bbox", save_prefix, line_images)
 
 
-def save_segments(save_folder: str, save_prefix: str, images):
+def save_segments(save_folder: str, save_prefix: str, images, ext: str = "png"):
     path = Path(save_folder)
     path.mkdir(parents=True, exist_ok=True)
     for i, output in enumerate(images):
-        output[0].save(f"{save_folder}/{save_prefix}_{i}.png")
+        output[0].save(f"{save_folder}/{save_prefix}_{i}.{ext}")
