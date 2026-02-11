@@ -26,6 +26,60 @@ def segment_document(modeladmin, request, queryset):
             pass
 
 
+class HasLinesegmentsFilter(admin.SimpleListFilter):
+    title = _("دارای تکه خط")
+    parameter_name = "has_linesegments"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("yes", _("بله")),
+            ("no", _("خیر")),
+        )
+
+    def queryset(self, request, queryset):
+        val = self.value()
+        if val == "yes":
+            return queryset.filter(id__in=[doc.pk for doc in queryset if doc.has_linesegments])
+        elif val == "no":
+            return queryset.filter(id__in=[doc.pk for doc in queryset if not doc.has_linesegments])
+        return queryset
+
+class IsTranscribedFilter(admin.SimpleListFilter):
+    title = _('رونوشت شده')
+    parameter_name = 'is_transcribed'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('yes', _('بله')),
+            ('no', _('خیر')),
+        )
+
+    def queryset(self, request, queryset):
+        val = self.value()
+        if val == 'yes':
+            return queryset.filter(id__in=[doc.pk for doc in queryset if doc.is_transcribed])
+        elif val == 'no':
+            return queryset.filter(id__in=[doc.pk for doc in queryset if not doc.is_transcribed])
+        return queryset
+
+class IsVerifiedFilter(admin.SimpleListFilter):
+    title = _('تایید شده')
+    parameter_name = 'is_verified'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('yes', _('بله')),
+            ('no', _('خیر')),
+        )
+
+    def queryset(self, request, queryset):
+        val = self.value()
+        if val == 'yes':
+            return queryset.filter(id__in=[doc.pk for doc in queryset if doc.is_verified])
+        elif val == 'no':
+            return queryset.filter(id__in=[doc.pk for doc in queryset if not doc.is_verified])
+        return queryset
+
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
     list_display = [
@@ -40,6 +94,7 @@ class DocumentAdmin(admin.ModelAdmin):
         "is_verified",
     ]
     actions = [segment_document]
+    list_filter=[HasLinesegmentsFilter, IsTranscribedFilter, IsVerifiedFilter]
 
     def compare_link(self, obj):
         if "_" in obj.name:
@@ -57,9 +112,9 @@ class DocumentAdmin(admin.ModelAdmin):
     def segments_link(self, obj):
         url = reverse("admin:selector_linesegment_changelist")
         url = f"{url}?document__id__exact={obj.id}"
-        return format_html('<a href="{}">List</a>', url)
+        return format_html('<a href="{}">لیست</a>', url)
 
-    segments_link.short_description = "List"
+    segments_link.short_description = "لیست خط‌ها"
 
     def segmenter_link(self, obj):
         url = reverse("document-segmenter", args=[obj.id])
@@ -67,8 +122,25 @@ class DocumentAdmin(admin.ModelAdmin):
 
     segmenter_link.short_description = "Segment"
 
+    def get_queryset(self, request):
+        # Store request for later use in segments_finalize_link
+        self._request = request
+        return super().get_queryset(request)
+
     def segments_finalize_link(self, obj):
         url = reverse("segment-finalize-admin", args=[obj.id])
+
+        # Preserve active filters/query params if possible
+        params = ""
+        if hasattr(self, "_request"):
+            get_dict = self._request.GET.copy()
+            # Remove _changelist_filters or pagination, keep only filters
+            for remove_key in ["_changelist_filters", "p"]:
+                if remove_key in get_dict:
+                    get_dict.pop(remove_key)
+            if get_dict:
+                params = "?" + get_dict.urlencode()
+        url = f"{url}{params}"
         return format_html('<a href="{}">Finalize</a>', url)
 
     segments_finalize_link.short_description = "Finalize"
@@ -108,30 +180,23 @@ class DocumentAdmin(admin.ModelAdmin):
 
     def has_linesegments(self, obj):
         return obj.linesegments.exists()
-
     has_linesegments.boolean = True
     has_linesegments.short_description = _("دارای تکه خط")
 
-    def is_transcribed(self, obj) -> bool:
-        return obj.linesegments.count() and all(
-            segment.transcribed for segment in obj.linesegments.all()
-        )
-
+    def is_transcribed(self, obj):
+        return obj.is_transcribed
     is_transcribed.boolean = True
     is_transcribed.short_description = _("رونوشت شده")
 
-    def is_verified(self, obj) -> bool:
-        return obj.linesegments.count() and all(
-            segment.verified for segment in obj.linesegments.all()
-        )
-
+    def is_verified(self, obj):
+        return obj.is_verified
     is_verified.boolean = True
     is_verified.short_description = _("تایید شده")
 
 
 @admin.register(LineSegment)
 class LineSegmentAdmin(admin.ModelAdmin):
-    list_display = ["id", "document", "order", "transcribed", "verified"]
+    list_display = ["id", "document", "order", "transcribed", "verified", "document_file_link"]
     list_filter = ["transcribed", "verified"]
     readonly_fields = ["image_tag"]
     ordering = ["document", "transcribed", "order"]
@@ -167,6 +232,14 @@ class LineSegmentAdmin(admin.ModelAdmin):
         return ""
 
     image_tag.short_description = "Image"
+
+    def document_file_link(self, obj):
+        if obj.document and obj.document.file:
+            url = obj.document.file.url
+            return format_html('<a href="{}" target="_blank">{}</a>', url, _("گشودن تصویر"))
+        return "-"
+    document_file_link.short_description = _("تصویر سند")
+    document_file_link.admin_order_field = 'document'
 
 
 def extract_lines_muharaf(im_path, save_prefix: str, doc_name: str, model, padding=10):

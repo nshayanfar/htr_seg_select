@@ -1,0 +1,12 @@
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('/static/fonts/Vazirmatn[wght].ttf') format('truetype supports variations'),
+         url('/static/fonts/Vazirmatn[wght].ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+body, input, textarea, select, button, .module caption, .breadcrumbs {
+    font-family: 'Vazirmatn', sans-serif !important;
+}

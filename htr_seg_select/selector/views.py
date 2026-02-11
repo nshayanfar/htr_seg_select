@@ -61,7 +61,15 @@ def segment_finalize_admin(request: HttpRequest, doc_id: int):
                     order=order,
                     document=doc
                 )
-    return redirect("admin:selector_document_changelist")
+    # Redirect to admin changelist, including any filter/query params
+    from django.urls import reverse
+    base_url = reverse("admin:selector_document_changelist")
+    # Build query params from request.GET
+    query_str = request.GET.urlencode()
+    if query_str:
+        return redirect(f"{base_url}?{query_str}")
+    else:
+        return redirect(base_url)
 
 def segment_finalize(request: HttpRequest, doc_name: str, page_name: str):
     if request.method == "POST":

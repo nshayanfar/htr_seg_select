@@ -16,6 +16,20 @@ class Document(models.Model):
     def __str__(self) -> str:
         return self.name or f"Document ({self.pk})"
 
+    @property
+    def is_transcribed(self) -> bool:
+        segments = self.linesegments.all()
+        return segments.exists() and all(segment.transcribed for segment in segments)
+
+    @property
+    def is_verified(self) -> bool:
+        segments = self.linesegments.all()
+        return segments.exists() and all(segment.verified for segment in segments)
+
+    @property
+    def has_linesegments(self) -> bool:
+        return self.linesegments.exists()
+
 
 class LineSegment(models.Model):
     file = models.FileField(verbose_name=_("فایل"))
