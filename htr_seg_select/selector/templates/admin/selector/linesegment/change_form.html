@@ -1,0 +1,57 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+
+{% block submit_buttons_bottom %}
+  <div class="submit-row">
+    {{ block.super }}
+    {% if has_next_untranscribed %}
+      <input type="submit"
+        name="save_and_next"
+        id="save-and-next-btn"
+        class="default"
+        value="{% trans 'Save and next' %}">
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // 1. Focus the transcription input/textarea on page load
+      var transcriptionField = document.querySelector('[name="transcription"]');
+      if (transcriptionField) {
+        transcriptionField.focus();
+        if (transcriptionField.select) {
+          transcriptionField.select();
+        }
+      }
+
+      // 2. Save and next button keyboard handling
+      var saveAndNextBtn = document.getElementById('save-and-next-btn');
+      function shouldActivateSaveAndNext() {
+        // Only enable Save & Next if button is present/enabled and visible
+        return (saveAndNextBtn && !saveAndNextBtn.hasAttribute('disabled') && saveAndNextBtn.offsetParent !== null);
+      }
+      document.addEventListener('keydown', function(e) {
+        // When Enter pressed, activate Save and Next if button is enabled and visible
+        var active = document.activeElement;
+        // Only react to Enter key, no modifiers
+        if (e.key === "Enter" && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && shouldActivateSaveAndNext()) {
+          // If focused in the transcription field, trigger Save and Next
+          if (
+            active &&
+            (
+              active.name === "transcription" &&
+              (active.tagName === "TEXTAREA" || (active.tagName === "INPUT" && active.type === "text"))
+            )
+          ) {
+            e.preventDefault();
+            saveAndNextBtn.click();
+          }
+          // (Optional: Outside transcription field, do nothing or let default behavior)
+        }
+      });
+    });
+  </script>
+{% endblock %}
