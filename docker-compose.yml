@@ -3,15 +3,17 @@ version: "3.9"
 services:
   app:
     build: .
-    container_name: htr_django_dev
+    container_name: htr_django_prod
     working_dir: /app
+    command: gunicorn htr_seg_select.wsgi:application --bind 0.0.0.0:8080
     volumes:
       - ./htr_seg_select:/app/htr_seg_select:rw
-      - ./htr_seg_select/media:/app/htr_seg_select/media:rw
-    ports:
-      - "8000:8000"
+      - /opt/transcription/media:/app/htr_seg_select/media:rw
+      - /opt/transcription/static:/app/htr_seg_select/staticfiles:rw
     environment:
-      # Set Django DB connection for Postgres (pg_htr must be a container in the same network)
+      DJANGO_SETTINGS_MODULE: htr_seg_select.production
+      DJANGO_STATIC_ROOT: /app/htr_seg_select/staticfiles
+      DJANGO_MEDIA_ROOT: /app/htr_seg_select/media
       DJANGO_DB_HOST: pg_htr
       DJANGO_DB_PORT: 5433
       DJANGO_DB_NAME: htr
@@ -22,7 +24,6 @@ services:
     networks:
       - htr_net
 
-  # Reference the Postgres DB container (not built here, only as external)
   pg_htr:
     external: true
 

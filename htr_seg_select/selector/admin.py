@@ -26,6 +26,13 @@ def segment_document(modeladmin, request, queryset):
         except Exception as a:
             pass
 
+def convert_to_unchecked(model_admin, request, queryset):
+    updated = queryset.update(verification=LineSegment.VerifiedState.UNCHECKED)
+    model_admin.message_user(
+        request,
+        _("%d line segments marked as unchecked.") % updated,
+        level="info",
+    )
 
 class HasLinesegmentsFilter(admin.SimpleListFilter):
     title = _("دارای تکه خط")
@@ -75,23 +82,44 @@ class IsTranscribedFilter(admin.SimpleListFilter):
 
 class IsVerifiedFilter(admin.SimpleListFilter):
     title = _("تایید شده")
-    parameter_name = "is_verified"
+    parameter_name = "verification"
 
     def lookups(self, request, model_admin):
         return (
-            ("yes", _("بله")),
-            ("no", _("خیر")),
+            ("accepted", _("قبول")),
+            ("rejected", _("رد")),
+            ("unchecked", _("بررسی نشده")),
         )
 
     def queryset(self, request, queryset):
         val = self.value()
-        if val == "yes":
+        if val == "accepted":
             return queryset.filter(
                 id__in=[doc.pk for doc in queryset if doc.is_verified]
             )
-        elif val == "no":
+        elif val == "rejected":
             return queryset.filter(
-                id__in=[doc.pk for doc in queryset if not doc.is_verified]
+                id__in=[
+                    doc.pk
+                    for doc in queryset
+                    if doc.linesegments.exists()
+                    and any(
+                        seg.verification == LineSegment.VerifiedState.REJECTED
+                        for seg in doc.linesegments.all()
+                    )
+                ]
+            )
+        elif val == "unchecked":
+            return queryset.filter(
+                id__in=[
+                    doc.pk
+                    for doc in queryset
+                    if doc.linesegments.exists()
+                    and any(
+                        seg.verification == LineSegment.VerifiedState.UNCHECKED
+                        for seg in doc.linesegments.all()
+                    )
+                ]
             )
         return queryset
 
@@ -134,6 +162,13 @@ class DocumentAdmin(admin.ModelAdmin):
 
     def segmenter_link(self, obj):
         url = reverse("document-segmenter", args=[obj.id])
+        # Preserve active filters/query params if possible
+        params = ""
+        if hasattr(self, "_request"):
+            get_dict = self._request.GET.copy()
+            if get_dict:
+                params = "?" + get_dict.urlencode()
+        url = f"{url}{params}"
         return format_html('<a href="{}">Segment</a>', url)
 
     segmenter_link.short_description = "Segment"
@@ -219,10 +254,10 @@ class LineSegmentAdmin(admin.ModelAdmin):
         "document",
         "order",
         "transcribed",
-        "verified",
+        "verification",
         "document_file_link",
     ]
-    list_filter = ["transcribed", "verified"]
+    list_filter = ["transcribed", "verification"]
     readonly_fields = ["image_tag"]
     ordering = ["document", "transcribed", "order"]
     formfield_overrides = {
@@ -236,7 +271,7 @@ class LineSegmentAdmin(admin.ModelAdmin):
         (
             None,
             {
-                "fields": ("document", "image_tag", "transcription", "verified"),
+                "fields": ("document", "image_tag", "transcription", "verification"),
             },
         ),
         (
@@ -247,6 +282,7 @@ class LineSegmentAdmin(admin.ModelAdmin):
             },
         ),
     )
+    actions=[convert_to_unchecked]
 
     change_form_template = "admin/selector/linesegment/change_form.html"
 
@@ -254,7 +290,7 @@ class LineSegmentAdmin(admin.ModelAdmin):
         # Store request GET params for use in context
         qs = super().get_queryset(request)
         self._list_filters = request.GET.urlencode()
-        return qs
+        return qs.select_related("document")
 
     def get_next_untranscribed(self, obj, request):
         """
@@ -269,12 +305,13 @@ class LineSegmentAdmin(admin.ModelAdmin):
             # Use preserved filters from request, if present
             preserved = self.get_preserved_filters(request)
             if preserved and request.GET.get("_changelist_filters"):
-                filter_args.append(request.GET.get("_changelist_filters").split("="))
+                if not request.GET.get("_changelist_filters").startswith("p="):
+                    filter_args.append(request.GET.get("_changelist_filters").split("="))
         if len(filter_args) or len(filters):
             qs = LineSegment.objects.filter(*filter_args, **filters)
         else:
             qs = LineSegment.objects.none()
-        next_segment = qs.filter(transcribed=False).order_by("id").first()
+        next_segment = qs.filter(transcribed=False).order_by("order").first()
         return next_segment
 
     def has_next_untranscribed(self, obj, request):

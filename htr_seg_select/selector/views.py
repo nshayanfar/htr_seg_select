@@ -11,7 +11,7 @@ def document_segmenter(request: HttpRequest, doc_id: int):
     """
     Executes the external main.py segmenter script with the document file path as argument.
     Only opens GUI, does not wait for output.
-    Reloads Document list page after execution.
+    Reloads Document list page after execution, with GET state preserved.
     """
     from .models import Document
 
@@ -37,8 +37,13 @@ def document_segmenter(request: HttpRequest, doc_id: int):
     except Exception as ex:
         # Could log error if needed, but per requirements, remain silent
         pass
-    # Redirect to Django admin document changelist
-    return redirect(reverse('admin:selector_document_changelist'))
+    # Redirect to Django admin document changelist, preserving GET state
+    base_url = reverse('admin:selector_document_changelist')
+    query_str = request.GET.urlencode()
+    if query_str:
+        return redirect(f"{base_url}?{query_str}")
+    else:
+        return redirect(base_url)
 
 def natural_key(s):
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]

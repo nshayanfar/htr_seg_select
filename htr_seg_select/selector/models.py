@@ -24,7 +24,10 @@ class Document(models.Model):
     @property
     def is_verified(self) -> bool:
         segments = self.linesegments.all()
-        return segments.exists() and all(segment.verified for segment in segments)
+        return segments.exists() and all(
+            segment.verification == LineSegment.VerifiedState.ACCEPTED
+            for segment in segments
+        )
 
     @property
     def has_linesegments(self) -> bool:
@@ -42,7 +45,17 @@ class LineSegment(models.Model):
     )
     transcription = models.TextField(blank=True, verbose_name=_("رونوشت"))
     transcribed = models.BooleanField(default=False, verbose_name=_("رونوشت شده"))
-    verified = models.BooleanField(default=False, verbose_name=_("تایید شده"))
+
+    class VerifiedState(models.IntegerChoices):
+        UNCHECKED = 0, _("بررسی نشده")
+        ACCEPTED = 1, _("قبول")
+        REJECTED = 2, _("رد")
+
+    verification = models.SmallIntegerField(
+        choices=VerifiedState.choices,
+        default=VerifiedState.UNCHECKED,
+        verbose_name=_("تایید شده"),
+    )
 
     class Meta:
         verbose_name = _("تکه خط")
