@@ -126,7 +126,14 @@ class IsVerifiedFilter(admin.SimpleListFilter):
 
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
-    list_display = [
+    actions = [segment_document]
+    list_filter = [HasLinesegmentsFilter, IsTranscribedFilter, IsVerifiedFilter]
+
+    SEGMENTER_COLS = ["id", "name", "compare_link", "segmenter_link", "segments_finalize_link", "has_linesegments"]
+    TRANSCRIBER_COLS = ["id", "name", "segments_link", "has_linesegments", "is_transcribed"]
+    VERIFIER_COLS = ["id", "name", "segments_link", "has_linesegments", "is_transcribed", "is_verified"]
+
+    COLUMN_ORDER = [
         "id",
         "name",
         "compare_link",
@@ -137,8 +144,32 @@ class DocumentAdmin(admin.ModelAdmin):
         "is_transcribed",
         "is_verified",
     ]
-    actions = [segment_document]
-    list_filter = [HasLinesegmentsFilter, IsTranscribedFilter, IsVerifiedFilter]
+
+    def get_list_display(self, request):
+        # Assess user roles by group name
+        user = request.user
+        roles = set()
+        group_names = set(g.name for g in user.groups.all())
+        if "segmenter" in group_names:
+            roles.add("segmenter")
+        if "transcriber" in group_names:
+            roles.add("transcriber")
+        if "verifier" in group_names:
+            roles.add("verifier")
+        # Union all columns for assigned roles
+        cols = set()
+        if "segmenter" in roles:
+            cols.update(self.SEGMENTER_COLS)
+        if "transcriber" in roles:
+            cols.update(self.TRANSCRIBER_COLS)
+        if "verifier" in roles:
+            cols.update(self.VERIFIER_COLS)
+        # Always show at least id and name if no group assigned
+        if not cols:
+            return ("id", "name")
+        # Order columns deterministically (by COLUMN_ORDER)
+        ordered = [x for x in self.COLUMN_ORDER if x in cols]
+        return ordered
 
     def compare_link(self, obj):
         if "_" in obj.name:
