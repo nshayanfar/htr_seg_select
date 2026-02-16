@@ -26,6 +26,7 @@ def segment_document(modeladmin, request, queryset):
         except Exception as a:
             pass
 
+
 def convert_to_unchecked(model_admin, request, queryset):
     updated = queryset.update(verification=LineSegment.VerifiedState.UNCHECKED)
     model_admin.message_user(
@@ -33,6 +34,7 @@ def convert_to_unchecked(model_admin, request, queryset):
         _("%d line segments marked as unchecked.") % updated,
         level="info",
     )
+
 
 class HasLinesegmentsFilter(admin.SimpleListFilter):
     title = _("دارای تکه خط")
@@ -129,9 +131,29 @@ class DocumentAdmin(admin.ModelAdmin):
     actions = [segment_document]
     list_filter = [HasLinesegmentsFilter, IsTranscribedFilter, IsVerifiedFilter]
 
-    SEGMENTER_COLS = ["id", "name", "compare_link", "segmenter_link", "segments_finalize_link", "has_linesegments"]
-    TRANSCRIBER_COLS = ["id", "name", "segments_link", "has_linesegments", "is_transcribed"]
-    VERIFIER_COLS = ["id", "name", "segments_link", "has_linesegments", "is_transcribed", "is_verified"]
+    SEGMENTER_COLS = [
+        "id",
+        "name",
+        "compare_link",
+        "segmenter_link",
+        "segments_finalize_link",
+        "has_linesegments",
+    ]
+    TRANSCRIBER_COLS = [
+        "id",
+        "name",
+        "segments_link",
+        "has_linesegments",
+        "is_transcribed",
+    ]
+    VERIFIER_COLS = [
+        "id",
+        "name",
+        "segments_link",
+        "has_linesegments",
+        "is_transcribed",
+        "is_verified",
+    ]
 
     COLUMN_ORDER = [
         "id",
@@ -289,7 +311,7 @@ class LineSegmentAdmin(admin.ModelAdmin):
         "document_file_link",
     ]
     list_filter = ["transcribed", "verification"]
-    readonly_fields = ["image_tag"]
+    readonly_fields = ["image_tag", "last_transcribed_by", "last_verified_by"]
     ordering = ["document", "transcribed", "order"]
     formfield_overrides = {
         models.TextField: {
@@ -302,20 +324,48 @@ class LineSegmentAdmin(admin.ModelAdmin):
         (
             None,
             {
-                "fields": ("document", "image_tag", "transcription", "verification"),
+                "fields": (
+                    "document",
+                    "image_tag",
+                    "transcription",
+                    "verification",
+                ),
             },
         ),
         (
             "advanced fields",
             {
                 "classes": ("collapse",),
-                "fields": ("file", "transcribed", "order"),
+                "fields": (
+                    "file",
+                    "transcribed",
+                    "order",
+                    "last_transcribed_by",
+                    "last_verified_by",
+                ),
             },
         ),
     )
-    actions=[convert_to_unchecked]
+    actions = [convert_to_unchecked]
 
     change_form_template = "admin/selector/linesegment/change_form.html"
+
+    def save_model(self, request, obj, form, change):
+        if change:
+            orig = type(obj).objects.get(pk=obj.pk)
+            transcription_changed = orig.transcription != obj.transcription
+            verification_changed = orig.verification != obj.verification
+            if transcription_changed:
+                obj.last_transcribed_by = request.user
+            if verification_changed:
+                obj.last_verified_by = request.user
+        else:
+            if obj.transcription:
+                obj.last_transcribed_by = request.user
+            # If verification is not UNCHECKED on creation, attribute to user
+            if obj.verification != obj.VerifiedState.UNCHECKED:
+                obj.last_verified_by = request.user
+        super().save_model(request, obj, form, change)
 
     def get_queryset(self, request):
         # Store request GET params for use in context
@@ -337,7 +387,9 @@ class LineSegmentAdmin(admin.ModelAdmin):
             preserved = self.get_preserved_filters(request)
             if preserved and request.GET.get("_changelist_filters"):
                 if not request.GET.get("_changelist_filters").startswith("p="):
-                    filter_args.append(request.GET.get("_changelist_filters").split("="))
+                    filter_args.append(
+                        request.GET.get("_changelist_filters").split("=")
+                    )
         if len(filter_args) or len(filters):
             qs = LineSegment.objects.filter(*filter_args, **filters)
         else:

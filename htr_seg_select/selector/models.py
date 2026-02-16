@@ -1,6 +1,7 @@
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 
 
@@ -55,6 +56,21 @@ class LineSegment(models.Model):
         choices=VerifiedState.choices,
         default=VerifiedState.UNCHECKED,
         verbose_name=_("تایید شده"),
+    )
+
+    last_transcribed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="transcribed_segments",
+        verbose_name=_("آخرین رونوشت‌کننده"),
+    )
+    last_verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="verified_segments",
+        verbose_name=_("آخرین بازبین"),
     )
 
     class Meta:
