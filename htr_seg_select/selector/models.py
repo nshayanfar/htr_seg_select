@@ -4,18 +4,34 @@ from django.dispatch import receiver
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 
+class Notebook(models.Model):
+    name = models.CharField(max_length=250, verbose_name=_("نام"))
+    file = models.FileField(null=True, verbose_name=_("فایل"))
+
+    class Meta:
+        verbose_name = _("جزوه")
+        verbose_name_plural = _("جزوات")
+
+    def __str__(self):
+        return self.name
 
 class Document(models.Model):
     # A single image of a page
-    name = models.CharField(max_length=250, blank=True, verbose_name=_("نام"))
     file = models.FileField(null=True, verbose_name=_("فایل"))
+    notebook = models.ForeignKey(
+        Notebook,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="documents",
+    )
+    page = models.IntegerField(null=True, verbose_name=_("شماره صفحه"))
 
     class Meta:
         verbose_name = _("سند")
         verbose_name_plural = _("اسناد")
 
     def __str__(self) -> str:
-        return self.name or f"Document ({self.pk})"
+        return f"{self.notebook.name} p{self.page}" or f"Document ({self.pk})"
 
     @property
     def is_transcribed(self) -> bool:
@@ -33,7 +49,6 @@ class Document(models.Model):
     @property
     def has_linesegments(self) -> bool:
         return self.linesegments.exists()
-
 
 class LineSegment(models.Model):
     file = models.FileField(verbose_name=_("فایل"))
@@ -83,12 +98,12 @@ class LineSegment(models.Model):
         super().save(*args, **kwargs)
 
 
-@receiver(post_save, sender="selector.Document")
-def sync_name_with_file(sender, instance, created, **kwargs):
-    import os
+# @receiver(post_save, sender="selector.Document")
+# def sync_name_with_file(sender, instance, created, **kwargs):
+#     import os
 
-    if instance.file:
-        base_name = os.path.splitext(os.path.basename(instance.file.name))[0]
-        if instance.name != base_name:
-            instance.name = base_name
-            instance.save(update_fields=["name"])
+#     if instance.file:
+#         base_name = os.path.splitext(os.path.basename(instance.file.name))[0]
+#         if instance.name != base_name:
+#             instance.name = base_name
+#             instance.save(update_fields=["name"])

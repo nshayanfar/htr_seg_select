@@ -51,7 +51,7 @@ def natural_key(s):
 def segment_finalize_admin(request: HttpRequest, doc_id: int):
     from .models import Document, LineSegment
     doc = Document.objects.get(pk=doc_id)
-    validated_folder = os.path.join(settings.MEDIA_ROOT, f"{doc.name}_validated")
+    validated_folder = os.path.join(settings.MEDIA_ROOT, f"{doc.notebook.name}_p{doc.page}_validated")
     if doc and os.path.isdir(validated_folder):
         for fname in os.listdir(validated_folder):
             fpath = os.path.join(validated_folder, fname)
@@ -62,7 +62,7 @@ def segment_finalize_admin(request: HttpRequest, doc_id: int):
                     continue
                 # Create LineSegment referencing the file
                 LineSegment.objects.create(
-                    file=f"{doc.name}_validated/{fname}",
+                    file=f"{doc.notebook.name}_p{doc.page}_validated/{fname}",
                     order=order,
                     document=doc
                 )

@@ -11,7 +11,8 @@ from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
-from .models import Document, LineSegment
+from .models import Document, LineSegment, Notebook
+from .utils.symbol_conversion import convert_symbols
 
 
 def segment_document(modeladmin, request, queryset):
@@ -126,6 +127,16 @@ class IsVerifiedFilter(admin.SimpleListFilter):
         return queryset
 
 
+@admin.register(Notebook)
+class NotebookAdmin(admin.ModelAdmin):
+    list_display = ("name", "file")
+    actions = ["convert_to_document_images"]
+
+    @admin.action(description=_("تبدیل به تصاویر سند"))
+    def convert_to_document_images(self, request, queryset):
+        pass
+
+
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
     actions = [segment_document]
@@ -133,7 +144,8 @@ class DocumentAdmin(admin.ModelAdmin):
 
     SEGMENTER_COLS = [
         "id",
-        "name",
+        "notebook__name",
+        "page",
         "compare_link",
         "segmenter_link",
         "segments_finalize_link",
@@ -141,14 +153,16 @@ class DocumentAdmin(admin.ModelAdmin):
     ]
     TRANSCRIBER_COLS = [
         "id",
-        "name",
+        "notebook__name",
+        "page",
         "segments_link",
         "has_linesegments",
         "is_transcribed",
     ]
     VERIFIER_COLS = [
         "id",
-        "name",
+        "notebook__name",
+        "page",
         "segments_link",
         "has_linesegments",
         "is_transcribed",
@@ -157,7 +171,8 @@ class DocumentAdmin(admin.ModelAdmin):
 
     COLUMN_ORDER = [
         "id",
-        "name",
+        "notebook__name",
+        "page",
         "compare_link",
         "segments_link",
         "segmenter_link",
@@ -166,6 +181,7 @@ class DocumentAdmin(admin.ModelAdmin):
         "is_transcribed",
         "is_verified",
     ]
+    list_per_page = 50
 
     def get_list_display(self, request):
         # Assess user roles by group name
@@ -192,15 +208,10 @@ class DocumentAdmin(admin.ModelAdmin):
         # Order columns deterministically (by COLUMN_ORDER)
         ordered = [x for x in self.COLUMN_ORDER if x in cols]
         return ordered
-
+    
     def compare_link(self, obj):
-        if "_" in obj.name:
-            doc_name, page_name = obj.name.rsplit("_", 1)
-        else:
-            doc_name = obj.name
-            page_name = ""
         url = reverse(
-            "segment-compare", kwargs={"doc_name": doc_name, "page_name": page_name}
+            "segment-compare", kwargs={"doc_name": obj.notebook.name, "page_name": f"p{obj.page}"}
         )
         return format_html('<a href="{}">Compare</a>', url)
 
@@ -229,7 +240,7 @@ class DocumentAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         # Store request for later use in segments_finalize_link
         self._request = request
-        return super().get_queryset(request)
+        return super().get_queryset(request).select_related("notebook")
 
     def segments_finalize_link(self, obj):
         url = reverse("segment-finalize-admin", args=[obj.id])
@@ -299,7 +310,6 @@ class DocumentAdmin(admin.ModelAdmin):
     is_verified.boolean = True
     is_verified.short_description = _("تایید شده")
 
-
 @admin.register(LineSegment)
 class LineSegmentAdmin(admin.ModelAdmin):
     list_display = [
@@ -346,7 +356,24 @@ class LineSegmentAdmin(admin.ModelAdmin):
             },
         ),
     )
-    actions = [convert_to_unchecked]
+
+    @admin.action(description=_("تبدیل نمادها (convert symbols)"))
+    def convert_symbols_action(self, request, queryset):
+        updated_count = 0
+        for segment in queryset:
+            original = segment.transcription or ""
+            converted = convert_symbols(original)
+            if original != converted:
+                segment.transcription = converted
+                segment.save(update_fields=["transcription"])
+                updated_count += 1
+        self.message_user(
+            request,
+            _("%d line segments were updated with converted symbols.") % updated_count,
+            level="info"
+        )
+
+    actions = [convert_to_unchecked, "convert_symbols_action"]
 
     change_form_template = "admin/selector/linesegment/change_form.html"
 
