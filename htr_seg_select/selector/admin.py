@@ -390,7 +390,13 @@ class LineSegmentAdmin(admin.ModelAdmin):
         "document_file_link",
     ]
     list_filter = ["transcribed", "verification"]
-    readonly_fields = ["image_tag", "last_transcribed_by", "last_verified_by"]
+    readonly_fields = [
+        "image_tag",
+        "last_transcribed_by",
+        "last_verified_by",
+        "document_image_tag",
+        "transcribed",
+    ]
     ordering = ["document", "transcribed", "order"]
     formfield_overrides = {
         models.TextField: {
@@ -399,32 +405,56 @@ class LineSegmentAdmin(admin.ModelAdmin):
             )
         },
     }
-    fieldsets = (
-        (
-            None,
-            {
-                "fields": (
-                    "document",
-                    "image_tag",
-                    "transcription",
-                    "verification",
-                ),
-            },
-        ),
-        (
-            "advanced fields",
-            {
-                "classes": ("collapse",),
-                "fields": (
-                    "file",
-                    "transcribed",
-                    "order",
-                    "last_transcribed_by",
-                    "last_verified_by",
-                ),
-            },
-        ),
-    )
+
+    def document_image_tag(self, obj):
+        if obj.document and obj.document.file:
+            # Add a unique class for reliable JS/CSS targeting
+            return format_html(
+                '<img src="{}" class="zoomable-document-image" style="max-width:600px; max-height:300px;" />',
+                obj.document.file.url,
+            )
+        return ""
+
+    document_image_tag.short_description = _("تصویر سند مرتبط")
+    document_image_tag.allow_tags = True
+
+    def get_fieldsets(self, request, obj=None):
+        # user = request.user
+        # group_names = set(g.name for g in user.groups.all())
+        # Fieldset for document image, expanded for 'verifier' group, collapsed otherwise
+        default_fieldsets = (
+            (
+                None,
+                {
+                    "fields": (
+                        "document",
+                        "image_tag",
+                        "transcription",
+                        "verification",
+                    ),
+                },
+            ),
+            (
+                _("تصویر سند مرتبط"),
+                {
+                    "classes": ("collapse",),
+                    "fields": ("document_image_tag",),
+                },
+            ),
+            (
+                _("ویژگی‌های پیشرفته"),  # Advanced fields
+                {
+                    "classes": ("collapse",),
+                    "fields": (
+                        "file",
+                        "order",
+                        "last_transcribed_by",
+                        "last_verified_by",
+                    ),
+                },
+            ),
+        )
+        return default_fieldsets
 
     @admin.action(description=_("تبدیل نمادها (convert symbols)"))
     def convert_symbols_action(self, request, queryset):
@@ -484,10 +514,11 @@ class LineSegmentAdmin(admin.ModelAdmin):
             if preserved and request.GET.get("_changelist_filters"):
                 if not request.GET.get("_changelist_filters").startswith("p="):
                     arguments = request.GET.get("_changelist_filters").split("&")
-                    arguments = [dict(zip([temp.split("=")[0]], [temp.split("=")[1]])) for temp in arguments]
-                    filters.update(
-                        {k: v for d in arguments for k, v in d.items()}
-                    )
+                    arguments = [
+                        dict(zip([temp.split("=")[0]], [temp.split("=")[1]]))
+                        for temp in arguments
+                    ]
+                    filters.update({k: v for d in arguments for k, v in d.items()})
         if len(filter_args) or len(filters):
             qs = LineSegment.objects.filter(*filter_args, **filters)
         else:

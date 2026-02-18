@@ -16,6 +16,22 @@
 
 {% block extrahead %}
   {{ block.super }}
+
+  <style>
+    #doc-zoom-box {
+      display: none;
+      position: fixed;
+      width: 500px;
+      height: 300px;
+      pointer-events: none;
+      border: 2px solid #666;
+      border-radius: 8px;
+      box-shadow: 0 2px 18px rgba(60,60,60,0.22);
+      background-repeat: no-repeat;
+      z-index: 9999;
+      background-color: #fff;
+    }
+  </style>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
       // 1. Focus the transcription input/textarea on page load
@@ -52,6 +68,62 @@
           // (Optional: Outside transcription field, do nothing or let default behavior)
         }
       });
+
+      // 3. Zoom admin document image on hover
+      // Find the document image by looking for 'تصویر سند مرتبط' alt or short_description, fallback to first img in its fieldset
+      var zoomBox = document.createElement('div');
+      zoomBox.id = 'doc-zoom-box';
+      document.body.appendChild(zoomBox);
+
+      // Reliable selector: document image gets 'zoomable-document-image' class for admin JS
+      var docImg = document.querySelector(".zoomable-document-image");
+
+      if (docImg) {
+        docImg.style.cursor = 'zoom-in';
+        docImg.addEventListener('mousemove', function(e) {
+          var rect = docImg.getBoundingClientRect();
+          var x = e.clientX - rect.left;
+          var y = e.clientY - rect.top;
+
+          var imgWidth = docImg.naturalWidth;
+          var imgHeight = docImg.naturalHeight;
+          var dispWidth = rect.width;
+          var dispHeight = rect.height;
+          var scale = 1.0; // 1x zoom (no magnification)
+
+          // Map x,y on displayed image to x,y on natural image
+          var imgX = x * (imgWidth / dispWidth);
+          var imgY = y * (imgHeight / dispHeight);
+
+          var bgX = imgX - (250 / scale); // Center zoomed area (half width of 500)
+          var bgY = imgY - (150 / scale);
+
+          // Clamp bgX/bgY so zoom-box covers available area and doesn't go outside image boundary
+          bgX = Math.max(0, Math.min(imgWidth - 500 / scale, bgX));
+          bgY = Math.max(0, Math.min(imgHeight - 300 / scale, bgY));
+
+          // Position zoomBox next to cursor (prefer right/bottom, fallback if near edge)
+          var pageX = e.clientX;
+          var pageY = e.clientY;
+          var viewportW = window.innerWidth;
+          var viewportH = window.innerHeight;
+          var offsetX = 15, offsetY = 15;
+          var boxLeft = pageX + offsetX;
+          var boxTop = pageY + offsetY;
+          if (boxLeft + 500 > viewportW) boxLeft = pageX - 500 - offsetX;
+          if (boxTop + 300 > viewportH) boxTop = pageY - 300 - offsetY;
+
+          zoomBox.style.left = boxLeft + 'px';
+          zoomBox.style.top = boxTop + 'px';
+          zoomBox.style.display = 'block';
+          zoomBox.style.backgroundImage = 'url(' + docImg.src + ')';
+          zoomBox.style.backgroundSize = (imgWidth * scale) + 'px ' + (imgHeight * scale) + 'px';
+          zoomBox.style.backgroundPosition = (-bgX * scale) + 'px ' + (-bgY * scale) + 'px';
+        });
+        docImg.addEventListener('mouseleave', function(e) {
+          zoomBox.style.display = 'none';
+        });
+      }
     });
   </script>
 {% endblock %}
