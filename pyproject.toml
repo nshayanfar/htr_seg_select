@@ -6,11 +6,15 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "django>=5.2.10",
-    "kraken[pdf]>=6.0.3",
     "opencv-contrib-python>=4.13.0.90",
     "opencv-python>=4.13.0.90",
     "psycopg[binary]>=3.3.2",
     "pymupdf>=1.26.7",
+]
+
+[project.optional-dependencies]
+ml = [
+    "kraken[pdf]>=6.0.3",
     "torch==2.9.0",
     "torchvision==0.24.0",
 ]
