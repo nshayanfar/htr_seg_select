@@ -18,6 +18,9 @@ ml = [
     "torch==2.9.0",
     "torchvision==0.24.0",
 ]
+production = [
+    "gunicorn>=25.1.0",
+]
 
 [tool.uv.sources]
 torch = [
