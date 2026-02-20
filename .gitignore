@@ -13,3 +13,4 @@ wheels/
 
 .vscode/
 media/
+.last_image_dir

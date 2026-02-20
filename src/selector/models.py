@@ -4,6 +4,7 @@ from django.dispatch import receiver
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 
+
 class Notebook(models.Model):
     name = models.CharField(max_length=250, verbose_name=_("نام"))
     file = models.FileField(null=True, verbose_name=_("فایل"))
@@ -15,6 +16,7 @@ class Notebook(models.Model):
     def __str__(self):
         return self.name
 
+
 class Document(models.Model):
     # A single image of a page
     file = models.FileField(null=True, verbose_name=_("فایل"))
@@ -24,7 +26,7 @@ class Document(models.Model):
         null=True,
         related_name="documents",
     )
-    page = models.IntegerField(null=True, verbose_name=_("شماره صفحه"))
+    page = models.IntegerField(null=True, blank=True, verbose_name=_("شماره صفحه"))
 
     class Meta:
         verbose_name = _("سند")
@@ -49,6 +51,7 @@ class Document(models.Model):
     @property
     def has_linesegments(self) -> bool:
         return self.linesegments.exists()
+
 
 class LineSegment(models.Model):
     file = models.FileField(verbose_name=_("فایل"))
@@ -98,12 +101,12 @@ class LineSegment(models.Model):
         super().save(*args, **kwargs)
 
 
-# @receiver(post_save, sender="selector.Document")
-# def sync_name_with_file(sender, instance, created, **kwargs):
-#     import os
+@receiver(post_save, sender="selector.Document")
+def sync_name_with_file(sender, instance, created, **kwargs):
+    import os
 
-#     if instance.file:
-#         base_name = os.path.splitext(os.path.basename(instance.file.name))[0]
-#         if instance.name != base_name:
-#             instance.name = base_name
-#             instance.save(update_fields=["name"])
+    if instance.file:
+        base_name = os.path.splitext(os.path.basename(instance.file.name))[0]
+        if not instance.page:
+            instance.page = int(base_name.rsplit("_", 1)[1][1:])
+            instance.save(update_fields=["page"])

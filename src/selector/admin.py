@@ -22,8 +22,8 @@ def segment_document(modeladmin, request, queryset):
     model_blla = vgsl.TorchVGSLModel.load_model("blla.mlmodel")
     for doc in queryset:
         try:
-            extract_lines_muharaf(doc.file.path, "muharaf", doc.name, model_muharaf)
-            extract_lines_blla(doc.file.path, "blla", doc.name, model_blla)
+            extract_lines_muharaf(doc.file.path, "muharaf", model_muharaf)
+            extract_lines_blla(doc.file.path, "blla", model_blla)
         except Exception as a:
             pass
 
@@ -279,7 +279,7 @@ class DocumentAdmin(admin.ModelAdmin):
     def compare_link(self, obj):
         url = reverse(
             "segment-compare",
-            kwargs={"doc_name": obj.notebook.name, "page_name": f"p{obj.page}"},
+            args=[obj.pk],
         )
         return format_html('<a href="{}">Compare</a>', url)
 
@@ -581,14 +581,14 @@ class LineSegmentAdmin(admin.ModelAdmin):
     document_file_link.admin_order_field = "document"
 
 
-def extract_lines_muharaf(im_path, save_prefix: str, doc_name: str, model, padding=10):
+def extract_lines_muharaf(im_path, save_prefix: str, model, padding=10):
     from kraken import blla
     from PIL import Image
 
     from .segmentation import extract_polygons
 
     base_name = os.path.basename(im_path)
-    _, ext = os.path.splitext(base_name)
+    base_name_wo_ext, ext = os.path.splitext(base_name)
     ext = ext.lstrip(".")
     # load page image
     im = Image.open(im_path)
@@ -599,21 +599,21 @@ def extract_lines_muharaf(im_path, save_prefix: str, doc_name: str, model, paddi
     # each region corresponds to a line bounding box
     line_images = extract_polygons(im, seg, pad=padding)
     save_segments(
-        join(settings.MEDIA_ROOT, f"{doc_name}_muharaf"),
+        join(settings.MEDIA_ROOT, f"{base_name_wo_ext}_muharaf"),
         save_prefix,
         line_images,
         ext=ext,
     )
 
 
-def extract_lines_blla(im_path, save_prefix: str, doc_name: str, model, padding=10):
+def extract_lines_blla(im_path, save_prefix: str, model, padding=10):
     from kraken import blla
     from PIL import Image
 
     from .segmentation import extract_polygons
 
     base_name = os.path.basename(im_path)
-    _, ext = os.path.splitext(base_name)
+    base_name_wo_ext, ext = os.path.splitext(base_name)
     ext = ext.lstrip(".")
     # load page image
     im = Image.open(im_path)
@@ -624,7 +624,7 @@ def extract_lines_blla(im_path, save_prefix: str, doc_name: str, model, padding=
     # each region corresponds to a line bounding box
     line_images = extract_polygons(im, seg, pad=padding)
     save_segments(
-        join(settings.MEDIA_ROOT, f"{doc_name}_blla"), save_prefix, line_images, ext=ext
+        join(settings.MEDIA_ROOT, f"{base_name_wo_ext}_blla"), save_prefix, line_images, ext=ext
     )
 
 

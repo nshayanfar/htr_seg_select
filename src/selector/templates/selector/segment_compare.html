@@ -19,12 +19,12 @@
 <body>
     <div class="left-panel">
         <div class="controls-top" style="background:#fff; margin-bottom:10px; box-shadow:0 2px 8px #ccc;">
-            <form method="post" action="{% url 'segment-finalize' doc_name page_name %}?model1={{ model1 }}&model2={{ model2 }}">
+            <form method="post" action="{% url 'segment-finalize' id %}?model1={{ model1 }}&model2={{ model2 }}">
                 {% csrf_token %}
                 <button type="submit" name="finalize" value="1">Finalize Accepted Lines</button>
             </form>
         </div>
-        <form class="controls-top" method="post" action="{% url 'segment-recreate' doc_name page_name %}?model1={{ model1 }}&model2={{ model2 }}">
+        <form class="controls-top" method="post" action="{% url 'segment-recreate' id %}?model1={{ model1 }}&model2={{ model2 }}">
             {% csrf_token %}
             <label for="padding">Padding:</label>
             <input class="padding-input" type="number" name="padding" id="padding" value="{{ padding|default:10 }}" min="0" max="100">

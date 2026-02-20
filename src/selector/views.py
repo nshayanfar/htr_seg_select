@@ -48,10 +48,11 @@ def document_segmenter(request: HttpRequest, doc_id: int):
 def natural_key(s):
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
 
-def segment_finalize_admin(request: HttpRequest, doc_id: int):
+def segment_finalize_admin(request: HttpRequest, id: int):
     from .models import Document, LineSegment
-    doc = Document.objects.get(pk=doc_id)
-    validated_folder = os.path.join(settings.MEDIA_ROOT, f"{doc.notebook.name}_p{doc.page}_validated")
+    doc = Document.objects.get(pk=id)
+    doc_base_name,_=os.path.splitext(os.path.basename(doc.file.path))
+    validated_folder = os.path.join(settings.MEDIA_ROOT, f"{doc_base_name}_validated")
     if doc and os.path.isdir(validated_folder):
         for fname in os.listdir(validated_folder):
             fpath = os.path.join(validated_folder, fname)
@@ -62,7 +63,7 @@ def segment_finalize_admin(request: HttpRequest, doc_id: int):
                     continue
                 # Create LineSegment referencing the file
                 LineSegment.objects.create(
-                    file=f"{doc.notebook.name}_p{doc.page}_validated/{fname}",
+                    file=f"{doc_base_name}_validated/{fname}",
                     order=order,
                     document=doc
                 )
@@ -76,12 +77,13 @@ def segment_finalize_admin(request: HttpRequest, doc_id: int):
     else:
         return redirect(base_url)
 
-def segment_finalize(request: HttpRequest, doc_name: str, page_name: str):
+def segment_finalize(request: HttpRequest, id:int):
     if request.method == "POST":
         from .models import Document, LineSegment
         import os
-        validated_folder = os.path.join(settings.MEDIA_ROOT, f"{doc_name}_{page_name}_validated")
-        doc = Document.objects.filter(name=f"{doc_name}_{page_name}").first()
+        doc=Document.objects.get(pk=id)
+        doc_base_name,_=os.path.splitext(os.path.basename(doc.file.path))
+        validated_folder = os.path.join(settings.MEDIA_ROOT, f"{doc_base_name}_validated")
         if doc and os.path.isdir(validated_folder):
             for fname in os.listdir(validated_folder):
                 fpath = os.path.join(validated_folder, fname)
@@ -92,7 +94,7 @@ def segment_finalize(request: HttpRequest, doc_name: str, page_name: str):
                         continue
                     # Create LineSegment referencing the file
                     LineSegment.objects.create(
-                        file=f"{doc_name}_{page_name}_validated/{fname}",
+                        file=f"{doc_base_name}_validated/{fname}",
                         order=order,
                         document=doc
                     )
@@ -101,18 +103,21 @@ def segment_finalize(request: HttpRequest, doc_name: str, page_name: str):
         model2 = request.GET.get("model2", "muharaf")
         idx1 = request.GET.get("idx1", "0")
         idx2 = request.GET.get("idx2", "0")
-        return redirect(f"/compare/{doc_name}/{page_name}?model1={model1}&model2={model2}&idx1={idx1}&idx2={idx2}")
+        return redirect(f"/compare/{doc.pk}?model1={model1}&model2={model2}&idx1={idx1}&idx2={idx2}")
 
-def segment_recreate(request: HttpRequest, doc_name: str, page_name: str):
+def segment_recreate(request: HttpRequest, id: int):
     if request.method == "POST":
         from . import admin as seg_admin
+        from .models import Document
+        doc=Document.objects.get(pk=id)
+        doc_base_name,_=os.path.splitext(os.path.basename(doc.file.path))
         model1 = request.GET.get("model1", "blla")
         model2 = request.GET.get("model2", "muharaf")
         recreate = request.POST.get("recreate")
         padding = int(request.POST.get("padding", 10))
         page_img_path = None
         for ext in [".jpg", ".jpeg", ".png"]:
-            candidate = os.path.join(settings.MEDIA_ROOT, f"{doc_name}_{page_name}{ext}")
+            candidate = os.path.join(settings.MEDIA_ROOT, f"{doc_base_name}{ext}")
             if os.path.exists(candidate):
                 page_img_path = candidate
                 break
@@ -122,20 +127,23 @@ def segment_recreate(request: HttpRequest, doc_name: str, page_name: str):
                 model_file = f"{model1}_seg_best.mlmodel" if model1 == "muharaf" else "blla.mlmodel"
                 from kraken.lib import vgsl
                 model_obj = vgsl.TorchVGSLModel.load_model(model_file)
-                model_func(page_img_path, model1, f"{doc_name}_{page_name}", model_obj, padding=padding)
+                model_func(page_img_path, model1, model_obj, padding=padding)
         elif recreate == "model2":
             model_func = getattr(seg_admin, f"extract_lines_{model2}", None)
             if model_func and page_img_path:
                 model_file = f"{model2}_seg_best.mlmodel" if model2 == "muharaf" else "blla.mlmodel"
                 from kraken.lib import vgsl
                 model_obj = vgsl.TorchVGSLModel.load_model(model_file)
-                model_func(page_img_path, model2, f"{doc_name}_{page_name}", model_obj, padding=padding)
+                model_func(page_img_path, model2, model_obj, padding=padding)
         # After recreation, redirect to segment_compare with preserved idx1 and idx2
         idx1 = request.GET.get("idx1", "0")
         idx2 = request.GET.get("idx2", "0")
-        return redirect(f"/compare/{doc_name}/{page_name}?model1={model1}&model2={model2}&idx1={idx1}&idx2={idx2}")
+        return redirect(f"/compare/{doc.pk}?model1={model1}&model2={model2}&idx1={idx1}&idx2={idx2}")
 
-def segment_compare(request: HttpRequest, doc_name: str, page_name: str):
+def segment_compare(request: HttpRequest, id: int):
+    from .models import Document
+    doc = Document.objects.get(pk=id)
+    doc_base_name,_=os.path.splitext(os.path.basename(doc.file.path))
     # Model folder names
     model1 = request.GET.get("model1", "blla")
     model2 = request.GET.get("model2", "muharaf")
@@ -143,8 +151,8 @@ def segment_compare(request: HttpRequest, doc_name: str, page_name: str):
     idx2 = int(request.GET.get("idx2", 0))
     padding = 10
 
-    folder1 = f"{doc_name}_{page_name}_{model1}"
-    folder2 = f"{doc_name}_{page_name}_{model2}"
+    folder1 = f"{doc_base_name}_{model1}"
+    folder2 = f"{doc_base_name}_{model2}"
     media_root = settings.MEDIA_ROOT
 
     folder1_path = os.path.join(media_root, folder1)
@@ -161,7 +169,7 @@ def segment_compare(request: HttpRequest, doc_name: str, page_name: str):
     # Accept logic
     accept1 = request.GET.get("accept1")
     accept2 = request.GET.get("accept2")
-    validated_folder = f"{doc_name}_{page_name}_validated"
+    validated_folder = f"{doc_base_name}_validated"
     validated_path = os.path.join(media_root, validated_folder)
     os.makedirs(validated_path, exist_ok=True)
 
@@ -181,10 +189,10 @@ def segment_compare(request: HttpRequest, doc_name: str, page_name: str):
         next_idx2 = min(idx2 + 1, len(segs2) - 1)
         return redirect(request.path + f"?model1={model1}&model2={model2}&idx1={next_idx1}&idx2={next_idx2}")
 
-    # Full page image (assume in media_root as {doc_name}_{page_name}.jpg or .png)
+    # Full page image (assume in media_root as {doc_base_name}.jpg or .png)
     page_img = None
     for ext in [".jpg", ".jpeg", ".png"]:
-        candidate = os.path.join(media_root, f"{doc_name}_{page_name}{ext}")
+        candidate = os.path.join(media_root, f"{doc_base_name}{ext}")
         if os.path.exists(candidate):
             page_img = settings.MEDIA_URL + os.path.basename(candidate)
             break
@@ -199,8 +207,8 @@ def segment_compare(request: HttpRequest, doc_name: str, page_name: str):
         "seg1_count": len(segs1),
         "seg2_count": len(segs2),
         "page_img": page_img,
-        "doc_name": doc_name,
-        "page_name": page_name,
+        "doc_name": doc_base_name,
+        "id": doc.pk
     }
     return render(request, "selector/segment_compare.html", context)
 
