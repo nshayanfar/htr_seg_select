@@ -256,13 +256,6 @@ sync_validated_to_remote.short_description = _("ارسال فایل‌ها")
 class DocumentAdmin(admin.ModelAdmin):
     actions = [segment_document, sync_validated_to_remote]
     list_filter = [HasLinesegmentsFilter, IsTranscribedFilter, IsVerifiedFilter]
-    ordering = [
-        "has_linesegments",
-        "is_transcribed",
-        "is_verified",
-        "notebook__name",
-        "page",
-    ]
 
     SEGMENTER_COLS = [
         "id",
