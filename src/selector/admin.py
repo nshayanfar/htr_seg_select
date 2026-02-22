@@ -204,10 +204,65 @@ class NotebookAdmin(admin.ModelAdmin):
         pass
 
 
+def sync_validated_to_remote(modeladmin, request, queryset):
+    """
+    Sync the validated folder for each selected document to a remote server using rsync.
+    Source: MEDIA_ROOT/{document_file_basename}_validated
+    Target: bol:/opt/transcription/media
+    """
+    import subprocess
+    import os
+
+    success_count = 0
+    error_count = 0
+    missing_count = 0
+
+    for doc in queryset:
+        if not doc.file:
+            error_count += 1
+            continue
+
+        # Get basename without extension
+        base_name = os.path.splitext(os.path.basename(doc.file.name))[0]
+        folder_name = f"{base_name}_validated"
+        source_path = os.path.join(settings.MEDIA_ROOT, folder_name)
+
+        if not os.path.exists(source_path):
+            missing_count += 1
+            continue
+
+        try:
+            result = subprocess.run(
+                ["rsync", "-avz", source_path, "bol:/opt/transcription/media"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            success_count += 1
+        except subprocess.CalledProcessError as e:
+            error_count += 1
+
+    modeladmin.message_user(
+        request,
+        f"Sync complete: {success_count} successful, {missing_count} missing folders, {error_count} errors.",
+        level="info" if error_count == 0 else "warning",
+    )
+
+
+sync_validated_to_remote.short_description = _("ارسال فایل‌ها")
+
+
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
-    actions = [segment_document]
+    actions = [segment_document, sync_validated_to_remote]
     list_filter = [HasLinesegmentsFilter, IsTranscribedFilter, IsVerifiedFilter]
+    ordering = [
+        "has_linesegments",
+        "is_transcribed",
+        "is_verified",
+        "notebook__name",
+        "page",
+    ]
 
     SEGMENTER_COLS = [
         "id",
@@ -397,7 +452,6 @@ class LineSegmentAdmin(admin.ModelAdmin):
         "document_image_tag",
         "transcribed",
     ]
-    ordering = ["document", "transcribed", "order"]
     formfield_overrides = {
         models.TextField: {
             "widget": forms.TextInput(
@@ -405,6 +459,19 @@ class LineSegmentAdmin(admin.ModelAdmin):
             )
         },
     }
+
+    def get_ordering(self, request):
+        user = request.user
+        group_names = set(g.name for g in user.groups.all())
+        is_verifier = "verifier" in group_names
+        is_transcriber = "transcriber" in group_names
+        is_segmenter = "segmenter" in group_names
+        if is_verifier and not is_transcriber and not is_segmenter:
+            return ["verification", "document", "order"]
+        elif is_transcriber and not is_verifier and not is_segmenter:
+            return ["transcribed", "document", "order"]
+        else:
+            return ["transcribed", "verification", "document", "order"]
 
     def document_image_tag(self, obj):
         if obj.document and obj.document.file:
@@ -624,7 +691,10 @@ def extract_lines_blla(im_path, save_prefix: str, model, padding=10):
     # each region corresponds to a line bounding box
     line_images = extract_polygons(im, seg, pad=padding)
     save_segments(
-        join(settings.MEDIA_ROOT, f"{base_name_wo_ext}_blla"), save_prefix, line_images, ext=ext
+        join(settings.MEDIA_ROOT, f"{base_name_wo_ext}_blla"),
+        save_prefix,
+        line_images,
+        ext=ext,
     )
 
 
