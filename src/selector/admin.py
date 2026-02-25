@@ -435,7 +435,6 @@ class LineSegmentAdmin(admin.ModelAdmin):
         "order",
         "transcribed",
         "verification",
-        "document_file_link",
     ]
     list_filter = ["transcribed", "verification"]
     readonly_fields = [
@@ -448,7 +447,12 @@ class LineSegmentAdmin(admin.ModelAdmin):
     formfield_overrides = {
         models.TextField: {
             "widget": forms.TextInput(
-                attrs={"size": "50", "dir": "rtl", "style": "font-size:1.3rem;"}
+                attrs={
+                    "size": "50",
+                    "dir": "rtl",
+                    "style": "font-size:1.3rem;",
+                    "autocomplete": "off",
+                }
             )
         },
     }
@@ -628,17 +632,6 @@ class LineSegmentAdmin(admin.ModelAdmin):
         return ""
 
     image_tag.short_description = "Image"
-
-    def document_file_link(self, obj):
-        if obj.document and obj.document.file:
-            url = obj.document.file.url
-            return format_html(
-                '<a href="{}" target="_blank">{}</a>', url, _("گشودن تصویر")
-            )
-        return "-"
-
-    document_file_link.short_description = _("تصویر سند")
-    document_file_link.admin_order_field = "document"
 
 
 def extract_lines_muharaf(im_path, save_prefix: str, model, padding=10):

@@ -96,9 +96,20 @@ class LineSegment(models.Model):
         verbose_name_plural = _("تکه‌های خط")
 
     def save(self, *args, **kwargs):
+        self.__cleanup_transcription()
         # Set transcribed to True if transcription is non-empty, else False
         self.transcribed = bool(self.transcription and self.transcription.strip())
         super().save(*args, **kwargs)
+
+    def __cleanup_transcription(self):
+        if self.transcription:
+            self.transcription = self.transcription.strip()
+            self.__cleanup_arrows()
+
+    def __cleanup_arrows(self):
+        from .utils.symbol_conversion import convert_symbols
+
+        self.transcription = convert_symbols(self.transcription)
 
 
 @receiver(post_save, sender="selector.Document")
