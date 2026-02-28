@@ -4,12 +4,12 @@
 {% block submit_buttons_bottom %}
   <div class="submit-row">
     {{ block.super }}
-    {% if has_next_untranscribed %}
+    {% if has_next_untranscribed or has_next_unverified %}
       <input type="submit"
         name="save_and_next"
         id="save-and-next-btn"
         class="default"
-        value="{% trans 'Save and next' %}">
+        value="{% if has_next_unverified and not has_next_untranscribed %}{% trans 'Save and next (verify)' %}{% else %}{% trans 'Save and next' %}{% endif %}">
     {% endif %}
   </div>
 {% endblock %}
@@ -58,14 +58,23 @@
           if (
             active &&
             (
-              active.name === "transcription" &&
-              (active.tagName === "TEXTAREA" || (active.tagName === "INPUT" && active.type === "text"))
+              // transcription field (textarea or text input)
+              (
+                active.name === "transcription" &&
+                (active.tagName === "TEXTAREA" || (active.tagName === "INPUT" && active.type === "text"))
+              )
+              ||
+              // NEW: verification dropdown (select)
+              (
+                active.name === "verification" &&
+                active.tagName === "SELECT"
+              )
             )
           ) {
             e.preventDefault();
             saveAndNextBtn.click();
           }
-          // (Optional: Outside transcription field, do nothing or let default behavior)
+          // (Optional: Outside transcription/verification field, do nothing or let default behavior)
         }
       });
 

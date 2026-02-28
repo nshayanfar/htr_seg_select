@@ -573,7 +573,6 @@ class LineSegmentAdmin(admin.ModelAdmin):
         if "document__id__exact" in request.GET:
             filters["document__id"] = request.GET["document__id__exact"]
         if hasattr(self, "get_preserved_filters"):
-            # Use preserved filters from request, if present
             preserved = self.get_preserved_filters(request)
             if preserved and request.GET.get("_changelist_filters"):
                 if not request.GET.get("_changelist_filters").startswith("p="):
@@ -587,40 +586,92 @@ class LineSegmentAdmin(admin.ModelAdmin):
             qs = LineSegment.objects.filter(*filter_args, **filters)
         else:
             qs = LineSegment.objects.none()
-        next_segment = qs.filter(transcribed=False).order_by("order").first()
+        next_segment = qs.filter(transcribed=False).order_by("document","order").first()
+        return next_segment
+
+    def get_next_unverified(self, obj, request):
+        """
+        Returns the next unverified (UNCHECKED) LineSegment, already transcribed, filtered like current changelist (if possible).
+        Orders by document_id, then order.
+        """
+        filters = {}
+        filter_args = []
+        if "document__id__exact" in request.GET:
+            filters["document__id"] = request.GET["document__id__exact"]
+        if hasattr(self, "get_preserved_filters"):
+            preserved = self.get_preserved_filters(request)
+            if preserved and request.GET.get("_changelist_filters"):
+                if not request.GET.get("_changelist_filters").startswith("p="):
+                    arguments = request.GET.get("_changelist_filters").split("&")
+                    arguments = [
+                        dict(zip([temp.split("=")[0]], [temp.split("=")[1]]))
+                        for temp in arguments
+                    ]
+                    filters.update({k: v for d in arguments for k, v in d.items()})
+
+        if len(filter_args) or len(filters):
+            qs = LineSegment.objects.filter(*filter_args, **filters)
+        else:
+            qs = LineSegment.objects.none()
+        next_segment = qs.filter(
+            transcribed=True,
+            verification=LineSegment.VerifiedState.UNCHECKED
+        ).order_by("document_id", "order").first()
         return next_segment
 
     def has_next_untranscribed(self, obj, request):
         next_seg = self.get_next_untranscribed(obj, request)
         return next_seg is not None
 
+    def has_next_unverified(self, obj, request):
+        next_seg = self.get_next_unverified(obj, request)
+        return next_seg is not None
+
     def render_change_form(self, request, context, *args, **kwargs):
         obj = kwargs.get("obj")
-        # context['has_next_untranscribed'] for template logic
         context["has_next_untranscribed"] = (
             self.has_next_untranscribed(obj, request) if obj else False
+        )
+        context["has_next_unverified"] = (
+            self.has_next_unverified(obj, request) if obj else False
         )
         return super().render_change_form(request, context, *args, **kwargs)
 
     def response_change(self, request, obj):
         if "save_and_next" in request.POST:
-            next_segment = self.get_next_untranscribed(obj, request)
-            if next_segment:
-                # Preserve filters/query params
-                params = request.GET.urlencode()
-                url = reverse(
-                    "admin:selector_linesegment_change",
-                    args=[next_segment.pk],
-                )
-                if params:
-                    url = f"{url}?{params}"
-                return HttpResponseRedirect(url)
+            # Decide next segment based on current transcribed status
+            if obj.transcribed:
+                next_segment = self.get_next_unverified(obj, request)
+                if next_segment:
+                    params = request.GET.urlencode()
+                    url = reverse(
+                        "admin:selector_linesegment_change",
+                        args=[next_segment.pk],
+                    )
+                    if params:
+                        url = f"{url}?{params}"
+                    return HttpResponseRedirect(url)
+                else:
+                    self.message_user(
+                        request, _("No more unverified line segments."), level="info"
+                    )
+                    return super().response_change(request, obj)
             else:
-                self.message_user(
-                    request, _("No more non-transcribed line segments."), level="info"
-                )
-                # Fallback to default; stay on current page
-                return super().response_change(request, obj)
+                next_segment = self.get_next_untranscribed(obj, request)
+                if next_segment:
+                    params = request.GET.urlencode()
+                    url = reverse(
+                        "admin:selector_linesegment_change",
+                        args=[next_segment.pk],
+                    )
+                    if params:
+                        url = f"{url}?{params}"
+                    return HttpResponseRedirect(url)
+                else:
+                    self.message_user(
+                        request, _("No more non-transcribed line segments."), level="info"
+                    )
+                    return super().response_change(request, obj)
         return super().response_change(request, obj)
 
     def image_tag(self, obj):
