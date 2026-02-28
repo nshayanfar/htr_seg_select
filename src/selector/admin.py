@@ -448,7 +448,7 @@ class LineSegmentAdmin(admin.ModelAdmin):
         models.TextField: {
             "widget": forms.Textarea(
                 attrs={
-                    "rows": 2,
+                    "rows": 3,
                     "dir": "rtl",
                     "style": "font-size:1.3rem; resize:none;",
                     "autocomplete": "off",
