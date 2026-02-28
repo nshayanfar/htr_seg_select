@@ -50,31 +50,59 @@
         return (saveAndNextBtn && !saveAndNextBtn.hasAttribute('disabled') && saveAndNextBtn.offsetParent !== null);
       }
       document.addEventListener('keydown', function(e) {
-        // When Enter pressed, activate Save and Next if button is enabled and visible
         var active = document.activeElement;
-        // Only react to Enter key, no modifiers
-        if (e.key === "Enter" && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && shouldActivateSaveAndNext()) {
-          // If focused in the transcription field, trigger Save and Next
-          if (
-            active &&
-            (
-              // transcription field (textarea or text input)
-              (
-                active.name === "transcription" &&
-                (active.tagName === "TEXTAREA" || (active.tagName === "INPUT" && active.type === "text"))
-              )
-              ||
-              // NEW: verification dropdown (select)
-              (
-                active.name === "verification" &&
-                active.tagName === "SELECT"
-              )
-            )
-          ) {
-            e.preventDefault();
-            saveAndNextBtn.click();
+
+        // Check focus is on transcription textarea or verification select
+        var inTranscriptionTextarea =
+          active &&
+          active.name === "transcription" &&
+          active.tagName === "TEXTAREA";
+
+        var inTranscriptionTextInput =
+          active &&
+          active.name === "transcription" &&
+          active.tagName === "INPUT" &&
+          active.type === "text";
+
+        var inVerificationSelect =
+          active &&
+          active.name === "verification" &&
+          active.tagName === "SELECT";
+
+        // Handle Shift+Enter/newlines in textarea (let browser do it)
+        if (e.key === "Enter") {
+          // If Shift is held, always allow default (line break)
+          if (e.shiftKey) return;
+
+          // Enter, no Shift, in transcription <textarea>
+          if (inTranscriptionTextarea) {
+            if (shouldActivateSaveAndNext()) {
+              e.preventDefault();
+              saveAndNextBtn.click();
+              return;
+            }
+            // Else: let browser handle Enter, submits the form (default Django admin behavior)
+            return;
           }
-          // (Optional: Outside transcription/verification field, do nothing or let default behavior)
+
+          // Enter, no Shift, in transcription text input (shouldn't happen any more, but keep backward compatible)
+          if (inTranscriptionTextInput) {
+            if (shouldActivateSaveAndNext()) {
+              e.preventDefault();
+              saveAndNextBtn.click();
+              return;
+            }
+            return;
+          }
+
+          // Enter, no Shift, in verification select
+          if (inVerificationSelect) {
+            if (shouldActivateSaveAndNext()) {
+              e.preventDefault();
+              saveAndNextBtn.click();
+            }
+            // Otherwise: let browser handle (may trigger form submit, as normal)
+          }
         }
       });
 

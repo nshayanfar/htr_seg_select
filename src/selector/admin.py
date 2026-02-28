@@ -446,11 +446,11 @@ class LineSegmentAdmin(admin.ModelAdmin):
     ]
     formfield_overrides = {
         models.TextField: {
-            "widget": forms.TextInput(
+            "widget": forms.Textarea(
                 attrs={
-                    "size": "50",
+                    "rows": 2,
                     "dir": "rtl",
-                    "style": "font-size:1.3rem;",
+                    "style": "font-size:1.3rem; resize:none;",
                     "autocomplete": "off",
                 }
             )
