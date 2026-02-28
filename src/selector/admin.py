@@ -585,7 +585,7 @@ class LineSegmentAdmin(admin.ModelAdmin):
         if len(filter_args) or len(filters):
             qs = LineSegment.objects.filter(*filter_args, **filters)
         else:
-            qs = LineSegment.objects.none()
+            qs = LineSegment.objects.all()
         next_segment = qs.filter(transcribed=False).order_by("document","order").first()
         return next_segment
 
@@ -612,7 +612,7 @@ class LineSegmentAdmin(admin.ModelAdmin):
         if len(filter_args) or len(filters):
             qs = LineSegment.objects.filter(*filter_args, **filters)
         else:
-            qs = LineSegment.objects.none()
+            qs = LineSegment.objects.all()
         next_segment = qs.filter(
             transcribed=True,
             verification=LineSegment.VerifiedState.UNCHECKED
